@@ -154,4 +154,47 @@ array_intervals_between_start_end = calculate_allintervals_todefinequery(
 stores_amount_writing_in_lake = 1
 
 
+retry_attempts = 4
 
+for interval in array_intervals_between_start_end:
+    for attempt in range(retry_attempts):
+        try:
+
+            end_num_with_extra_increment = interval[1] + 1
+
+            run_database_load_mongodb(
+                namespace_name,
+                dataset_name,
+                sega_url,
+                interval[0],
+                end_num_with_extra_increment,
+                partition_column,
+                database,
+                custom_schema,
+                filename,
+                storage_bucket_name,
+                ss,
+                remote_log_file,
+            )
+
+            stores_amount_writing_in_lake += 1
+
+            break
+        except Exception as e:
+            print(f">>> [WARN] Error on attempt {attempt + 1}: {str(e)}")
+
+            if attempt == retry_attempts - 1:
+                mensage = ">>> [WARN] All attempts failed. Shutting down."
+                update_status(id_request, "failed")
+                update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+                sys.exit(1)
+            else:
+                print(">>> [INFO] Trying again...")
+                time.sleep(60)
+
+    if stores_amount_writing_in_lake > len(array_intervals_between_start_end):
+        update_status(id_request, "success")
+        mensage = ">>> [INFO] Process finished successfully"
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+        break
+ss.spark.stop()
