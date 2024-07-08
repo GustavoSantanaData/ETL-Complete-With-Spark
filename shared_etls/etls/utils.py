@@ -781,6 +781,30 @@ def extract_and_transform_data_from_the_raw_zone(
     Returns:
     DataFrame
         The transformed DataFrame with a surrogate key, timestamp, and duplicates removed.
+    """
+
+    mensage = f" >>> [INFO]  reading data from staging {DSMetadata.dataset}"
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    mensage = f">>> [INFO] transforming based at {sk_key}"
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    df_extracted_from_raw = ss.read.parquet(
+        environment=Environment.PRODUCTION,
+        zone=Zone.WORK,
+        namespace=DSMetadata.namespace,
+        dataset=DSMetadata.dataset,
+        cloud_environment="gcp",
+    )
+
+    df_parquet_surrogate_key = create_surrogate_key(
+        sk_key,
+        df_extracted_from_raw,
+        filename,
+        storage_bucket_name,
+        remote_log_file,
+        enableHyphenSeparator,
+    )
 
     df_with_timestamp = add_timestamp_into_dataframe(
         df_parquet_surrogate_key, filename, storage_bucket_name, remote_log_file
