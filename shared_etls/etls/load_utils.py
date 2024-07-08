@@ -9,15 +9,15 @@ from cloud_utils import update_logs
 
 
 def read_from_database(
-    sega_user,
-    sega_pass,
-    connection_url,
-    query,
-    ss,
-    filename,
-    storage_bucket_name,
-    remote_log_file,
-):
+        sega_user,
+        sega_pass,
+        connection_url,
+        query,
+        ss,
+        filename,
+        storage_bucket_name,
+        remote_log_file
+        ):
     """
     Reads data from a database using JDBC connection.
 
@@ -31,7 +31,7 @@ def read_from_database(
     :return: DataFrame: The DataFrame containing the queried data.
     """
 
-    mensage = f">>> [INFO] Starting Load from database"
+    mensage = (f">>> [INFO] Starting Load from database")
     update_logs(mensage, filename, storage_bucket_name, remote_log_file)
 
     df = (
@@ -57,7 +57,7 @@ def read_from_database_mongodb(
     ss,
     filename,
     storage_bucket_name,
-    remote_log_file,
+    remote_log_file
 ):
     """
     Reads data from a MongoDB database.
@@ -75,8 +75,9 @@ def read_from_database_mongodb(
     :return: DataFrame: The DataFrame containing the queried data.
     """
 
-    mensage = f">>> [INFO] Starting Load from mongo database"
+    mensage = (f">>> [INFO] Starting Load from mongo database")
     update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
 
     if custom_schema:
         df = (
@@ -150,7 +151,7 @@ def run_database_load_mongodb(
             ss,
             filename,
             storage_bucket_name,
-            remote_log_file,
+            remote_log_file
         )
 
         mensage = ">>> [INFO] Read from database successfully"
@@ -226,8 +227,8 @@ def run_database_load(
                 ss,
                 filename,
                 storage_bucket_name,
-                remote_log_file,
-            )
+                remote_log_file
+                )
 
             mensage = ">>> [INFO] Read from database successfully"
             update_logs(mensage, filename, storage_bucket_name, remote_log_file)
@@ -302,4 +303,224 @@ def get_database_minimumvalue_mongodb(
     return result
 
 
+def get_database_minimumvalue(
+    partition_column,
+    dataset_name,
+    sega_user,
+    sega_pass,
+    sega_url,
+    filename,
+    storage_bucket_name,
+    remote_log_file,
+    id_request,
+    ss,
+):
+    """
+    Retrieves the minimum value of a partition column from a database table.
 
+    Parameters:
+        :param partition_column: str: The name of the partition column.
+        :param dataset_name: str: The name of the dataset.
+        :param sega_user: str: The username for the database connection.
+        :param sega_pass: str: The password for the database connection.
+        :param sega_url: str: The JDBC URL for the database connection.
+        :param filename: str: The name of the log file.
+        :param storage_bucket_name: str: The name of the storage bucket.
+        :param remote_log_file: str: The path of the remote log file.
+        :param id_request: str: The ID of the request.
+        :param ss: SparkSession: An instance of SparkSession, used for data processing and
+        interactions
+      with cloud storage.
+
+    Returns:
+        :return: result Any: The minimum value of the partition column from the database.
+    """
+
+    try:
+        mensage = f">>> [INFO] Get min partition_column value {partition_column}"
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+        query = f"(select min({partition_column}) from {dataset_name}) subs"
+        df = (
+            ss.spark.read.format("jdbc")
+            .option("user", sega_user)
+            .option("password", sega_pass)
+            .option("url", sega_url)
+            .option("dbTable", query)
+            .load()
+        )
+    except Exception as e:
+        mensage = f">>> [WARN] Capture failed...{str(e)}"
+        update_status(id_request, "failed")
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+        sys.exit(1)
+
+    result = df.collect()[0][0]
+    mensage = f">>> [INFO] Charging will start from {result} with type {type(result)}"
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    return result
+
+
+def calc_max_partition_value_mongodb(
+    partition_column,
+    sega_url,
+    database,
+    namespace_name,
+    dataset_name,
+    cloud_environment,
+    filename,
+    storage_bucket_name,
+    remote_log_file,
+    ss,
+):
+    """
+    Calc max partition value from base origem
+
+    Args:
+        :param partition_column: str: The name of the column used for partitioning the dataset.
+    :param sega_url: str: The URL of the MongoDB server.
+    :param database: str: The name of the database in MongoDB.
+    :param namespace_name: str: The name of the namespace (collection) in MongoDB.
+    :param dataset_name: str: The name of the dataset.
+    :param cloud_environment: str: The cloud environment where the dataset resides
+      (e.g., 'aws', 'gcp').
+    :param filename: str: The name of the file to be created in the storage bucket,
+    including the file extension (e.g., 'max_partition_value.txt').
+    :param storage_bucket_name: str: The name of the cloud storage bucket where the result
+    will be uploaded.
+    :param remote_log_file: str: The path to a remote log file where operational details and
+    metadata will be recorded.
+    :param ss: SparkSession: An instance of SparkSession, used for data processing and interactions
+    with cloud storage.
+
+    Returns:
+        :return: max_estimated_to_injestion int: o valor mÃ¡ximo da coluna de partiÃ§Ã£o
+    """
+
+    mensage = (f">>> [INFO] Calculating maximum partition column value {partition_column}")
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+
+    from utils import get_schema_to_mongodb_run
+
+    add_security_value = 300000
+
+    custom_schema = get_schema_to_mongodb_run(
+        namespace_name,
+        dataset_name,
+        cloud_environment,
+        filename,
+        storage_bucket_name,
+        remote_log_file,
+        ss,
+    )
+    try:
+        df = (
+            ss.spark.read.format("mongo")
+            .option("uri", sega_url)
+            .option("spark.mongodb.input.database", database)
+            .option("user", "defaultDbUser")
+            .option("spark.mongodb.input.collection", dataset_name)
+            .load(schema=custom_schema, inferSchema=False)
+            .select(max(col(partition_column)))
+        )
+
+        max_result = df.collect()[0][0]
+
+        mensage = (f">>> [INFO] This is the max_result of select: {max_result}")
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+        mensage = (f">>> [INFO] with type: {type(max_result)}")
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+        if isinstance(max_result, str):
+            try:
+                max_result = int(max_result)
+            except ValueError:
+
+                mensage = f">>> [WARN] max_result ({max_result}) cant be converted to int."
+                update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+        max_estimated_to_injestion = max_result + add_security_value
+
+        mensage = f">>> [INFO] max result: {max_result}"
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+        mensage = f">>> [INFO] max estimated to injestion: {max_estimated_to_injestion}"
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    except Exception as e:
+        mensage = f">>> [WARN] Error capturing maximum value {e}"
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    return max_estimated_to_injestion
+
+
+def calc_max_partition_value(
+    partition_column,
+    dataset_name,
+    sega_url,
+    sega_user,
+    sega_pass,
+    ss,
+    filename,
+    storage_bucket_name,
+    remote_log_file,
+):
+    """
+    Calculates the maximum value of the partition column from the source base.
+
+    Args:
+    :param partition_column: str: The name of the column used for partitioning the dataset.
+    :param dataset_name: str: The name of the dataset.
+    :param sega_url: str: The URL of the database server.
+    :param sega_user: str: The username for authenticating with the database.
+    :param sega_pass: str: The password for authenticating with the database.
+    :param ss: SparkSession: An instance of SparkSession, used for data processing.
+
+    Returns:
+        :return: max_estimated_to_injestion int: The maximum value of the partition column.
+    """
+
+    mensage = (f">>> [INFO] Calculating the maximum value of the division column {partition_column}")
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+
+    add_security_value = 300000
+
+    df = (
+        ss.spark.read.format("jdbc")
+        .option("user", sega_user)
+        .option("password", sega_pass)
+        .option("url", sega_url)
+        .option("dbTable", f"(select max({partition_column}) from {dataset_name}) subs")
+        .load()
+    )
+
+    max_result = df.collect()[0][0]
+
+    mensage = (f">>> [INFO] this is the max_result of select: {max_result}")
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    mensage = (f">>> [INFO] with type: {type(max_result)}")
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    if isinstance(max_result, str):
+        try:
+            max_result = int(max_result)
+        except ValueError:
+
+            mensage = (f">>> [WARN] max_result ({max_result}) cant be convert to int.")
+            update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    max_estimated_to_injestion = max_result + add_security_value
+
+    mensage = (f">>> [INFO] Max value: {max_result}")
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    mensage = (f">>> [INFO] estimated max value: {max_estimated_to_injestion}")
+    update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+    
+
+    return max_estimated_to_injestion
