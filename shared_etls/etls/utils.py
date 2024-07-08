@@ -729,5 +729,67 @@ def quality_check_dataformat(df, filename, storage_bucket_name, remote_log_file)
     update_logs(mensage, filename, storage_bucket_name, remote_log_file)
 
     try:
-  
+        coldates = [
+            cols
+            for cols in df.columns
+            if df.select(cols).dtypes[0][1] in ["timestamp", "date"]
+        ]
+        for colname in coldates:
+            try:
+                df = df.withColumn(
+                    colname,
+                    sf.when(sf.year(colname) >= 10, sf.col(colname)).otherwise(None),
+                )
+            except Exception as ms:
+                mensage = ">>> [WARN] There was a problem while handling invalid"
+                update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    except Exception as msg:
+        mensage = f">>> [WARN] There was a problem while handling invalid dates: {msg}"
+        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
+
+    return df
+
+
+def extract_and_transform_data_from_the_raw_zone(
+    DSMetadata,
+    ss,
+    sk_key,
+    filename,
+    storage_bucket_name,
+    remote_log_file,
+    enableHyphenSeparator,
+):
+    """
+    Extracts data from the raw zone, transforms it by adding a surrogate
+    key and a timestamp, performs a quality check, and removes duplicate entries.
+
+    Parameters:
+    DSMetadata : DSMetadataClass
+        An object containing metadata information such as namespace and dataset details.
+    ss : SparkSession
+        The Spark session to be used for reading and transforming the data.
+    sk_key : list
+        A list of column names to be used for generating the surrogate key.
+    filename : str
+        The name of the file being processed, used for logging purposes.
+    storage_bucket_name : str
+        The name of the storage bucket where logs and datasets are stored.
+    remote_log_file : str
+        The remote log file to be updated with log messages.
+
+    Returns:
+    DataFrame
+        The transformed DataFrame with a surrogate key, timestamp, and duplicates removed.
+
+    df_with_timestamp = add_timestamp_into_dataframe(
+        df_parquet_surrogate_key, filename, storage_bucket_name, remote_log_file
+    )
+
+    df_parquet_dataform_check = quality_check_dataformat(
+        df_with_timestamp, filename, storage_bucket_name, remote_log_file
+    )
+
+    df_parquet = df_parquet_dataform_check.dropDuplicates(["sk"])
+
     return df_parquet
