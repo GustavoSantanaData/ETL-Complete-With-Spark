@@ -729,25 +729,5 @@ def quality_check_dataformat(df, filename, storage_bucket_name, remote_log_file)
     update_logs(mensage, filename, storage_bucket_name, remote_log_file)
 
     try:
-        coldates = [
-            cols
-            for cols in df.columns
-            if df.select(cols).dtypes[0][1] in ["timestamp", "date"]
-        ]
-        for colname in coldates:
-            try:
-                df = df.withColumn(
-                    colname,
-                    sf.when(sf.year(colname) >= 10, sf.col(colname)).otherwise(None),
-                )
-            except Exception as ms:
-                mensage = ">>> [WARN] There was a problem while handling invalid"
-                update_logs(mensage, filename, storage_bucket_name, remote_log_file)
-
-    except Exception as msg:
-        mensage = f">>> [WARN] There was a problem while handling invalid dates: {msg}"
-        update_logs(mensage, filename, storage_bucket_name, remote_log_file)
-
-    return df
-
-
+  
+    return df_parquet
