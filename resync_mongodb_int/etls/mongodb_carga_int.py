@@ -198,3 +198,5 @@ for interval in array_intervals_between_start_end:
         update_logs(mensage, filename, storage_bucket_name, remote_log_file)
         break
 ss.spark.stop()
+
+
